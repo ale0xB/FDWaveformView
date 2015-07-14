@@ -30,6 +30,8 @@
 #define verticalMaximumOverdraw 3
 #define verticalTargetOverdraw 2
 
+#define maxScale    4.0
+
 
 @interface FDWaveformView() <UIGestureRecognizerDelegate>
 @property (nonatomic, strong) UIImageView *image;
@@ -43,6 +45,14 @@
 @property (nonatomic, strong) UIPinchGestureRecognizer *pinchRecognizer;
 @property (nonatomic, strong) UIPanGestureRecognizer *panRecognizer;
 @property (nonatomic, strong) UITapGestureRecognizer *tapRecognizer;
+@property (nonatomic, strong) UIView *selectionView;
+
+@property (nonatomic, assign) CGFloat currentScale;
+
+@property (nonatomic, assign) unsigned long int selectionStartSamples;
+@property (nonatomic, assign) unsigned long int selectionEndSamples;
+@property (nonatomic, assign) unsigned long int samplesForSixSeconds;
+
 @property BOOL renderingInProgress;
 @property BOOL loadingInProgress;
 @end
@@ -61,6 +71,10 @@
     self.clipping.clipsToBounds = YES;
     [self addSubview:self.clipping];
     self.clipsToBounds = YES;
+    
+    self.selectionView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, CGRectGetWidth(self.frame), CGRectGetHeight(self.frame))];
+    [self.selectionView setBackgroundColor:[UIColor colorWithRed:1.0f green:0.0 blue:0.0 alpha:0.5]];
+    [self addSubview:self.selectionView];
     
     self.wavesColor = [UIColor blackColor];
     self.progressColor = [UIColor blueColor];
@@ -99,7 +113,7 @@
         [self.delegate waveformViewWillLoad:self];
     self.asset = [AVURLAsset URLAssetWithURL:audioURL options:nil];
     self.assetTrack = [[self.asset tracksWithMediaType:AVMediaTypeAudio] firstObject];
-
+    
     [self.asset loadValuesAsynchronouslyForKeys:@[@"duration"] completionHandler:^() {
         self.loadingInProgress = NO;
         if ([self.delegate respondsToSelector:@selector(waveformViewDidLoad:)])
@@ -114,11 +128,16 @@
                 _progressSamples = 0; // skip setter
                 _zoomStartSamples = 0; // skip setter
 
-                NSArray *formatDesc = self.assetTrack.formatDescriptions;
-                CMAudioFormatDescriptionRef item = (__bridge CMAudioFormatDescriptionRef)formatDesc[0];
-                const AudioStreamBasicDescription *asbd = CMAudioFormatDescriptionGetStreamBasicDescription(item);
-                unsigned long int samples = asbd->mSampleRate * (float)self.asset.duration.value/self.asset.duration.timescale;
-                _totalSamples = _zoomEndSamples = samples;
+                CMTimeValue samples = self.asset.duration.value;
+                _totalSamples = _zoomEndSamples = (NSInteger)samples;
+        
+
+                self.assetDuration = self.asset.duration;
+                
+                self.selectionStartSamples = 0;
+                self.selectionEndSamples = 6 * self.assetDuration.timescale; // First 6 seconds;
+                self.samplesForSixSeconds = self.selectionEndSamples;
+                
                 [self setNeedsDisplay];
                 [self performSelectorOnMainThread:@selector(setNeedsLayout) withObject:nil waitUntilDone:NO];
                 break;
@@ -138,6 +157,7 @@
 - (void)setProgressSamples:(unsigned long)progressSamples
 {
     _progressSamples = progressSamples;
+    NSLog(@"Progress samples: %lu", progressSamples);
     if (self.totalSamples) {
         float progress = (float)self.progressSamples / self.totalSamples;
         self.clipping.frame = CGRectMake(0,0,self.frame.size.width*progress,self.frame.size.height);
@@ -207,6 +227,16 @@
     self.image.frame = self.highlightedImage.frame = frame;
     self.clipping.frame = CGRectMake(0,0,self.frame.size.width*scaledProgress,self.frame.size.height);
     self.clipping.hidden = self.progressSamples <= self.zoomStartSamples;
+    
+//    CGFloat selectionXStart = CGRectGetWidth(self.frame) * self.selectionStartSamples / self.totalSamples;
+//    CGFloat selectionXEnd = CGRectGetWidth(self.frame) * self.selectionEndSamples / self.totalSamples;
+    
+    CGFloat selectionXStart = self.selectionStartSamples < self.zoomStartSamples ? 0 : CGRectGetWidth(self.frame) * (self.selectionStartSamples - self.zoomStartSamples) / (self.zoomEndSamples - self.zoomStartSamples);
+    CGFloat selectionXEnd = (self.zoomEndSamples < self.selectionEndSamples) || (self.selectionEndSamples < self.zoomStartSamples) ? 0 : CGRectGetWidth(self.frame) * (self.selectionEndSamples - self.zoomStartSamples) / (self.zoomEndSamples - self.zoomStartSamples);
+    
+    CGFloat frameWidth = selectionXEnd - selectionXStart;
+    self.selectionView.frame = CGRectMake(selectionXStart, 0.0f, frameWidth, CGRectGetHeight(self.frame));
+
 }
 
 - (void)renderAsset
@@ -362,6 +392,7 @@
     UIRectFillUsingBlendMode(drawRect, kCGBlendModeSourceAtop);
     UIImage *tintedImage = UIGraphicsGetImageFromCurrentImageContext();
     UIGraphicsEndImageContext();
+    
     done(image, tintedImage);
 }
 
@@ -376,6 +407,31 @@
     if (!self.doesAllowStretch)
         return;
     if (recognizer.scale == 1) return;
+    
+    NSLog(@"Scale: %.2f", recognizer.scale);
+    
+    if (!self.currentScale) {
+        self.currentScale = 1;
+    }
+    if (recognizer.scale > 1) {
+        if (self.currentScale + recognizer.scale - 1 > maxScale) {
+            self.currentScale = maxScale;
+            return;
+        }
+        self.currentScale += (recognizer.scale - 1);
+    } else {
+        if (self.currentScale == 1) {
+            return;
+        }
+        if (self.currentScale - (1 - recognizer.scale) < 1) {
+            self.currentScale = 1;
+        } else {
+            self.currentScale -= (1 - recognizer.scale);
+        }
+
+    }
+    
+    NSLog(@"Current Scale: %.2f", self.currentScale);
     
     unsigned long middleSamples = (self.zoomStartSamples + self.zoomEndSamples) / 2;
     unsigned long rangeSamples = self.zoomEndSamples - self.zoomStartSamples;
@@ -422,8 +478,32 @@
 
 - (void)handleTapGesture:(UITapGestureRecognizer *)recognizer
 {
+    NSInteger touchSample = self.zoomStartSamples + (float)(self.zoomEndSamples - self.zoomStartSamples) * [recognizer locationInView:self].x / CGRectGetWidth(self.bounds);
     if (self.doesAllowScrubbing) {
-        self.progressSamples = self.zoomStartSamples + (float)(self.zoomEndSamples-self.zoomStartSamples) * [recognizer locationInView:self].x / self.bounds.size.width;
+        self.progressSamples = touchSample;
+    } else {
+        //First detect what handle we should move by calculating the minimum distance from both to the tap point
+        NSInteger distanceToStart = (NSInteger)labs(touchSample - (NSInteger)self.selectionStartSamples);
+        NSInteger distanceToEnd = (NSInteger)labs(touchSample - (NSInteger)self.selectionEndSamples);
+        if (distanceToEnd > distanceToStart) {
+            //Move left handle if lenght < 6 secs
+            if (self.selectionEndSamples - touchSample > self.samplesForSixSeconds) {
+                return;
+            }
+            self.selectionStartSamples = touchSample;
+        } else {
+            //Move right handle if lenght < 6 secs
+            if (touchSample - self.selectionStartSamples > self.samplesForSixSeconds) {
+                return;
+            }
+            self.selectionEndSamples = touchSample;
+        }
+        
+        if (self.delegate && [self.delegate respondsToSelector:@selector(waveformDidSelectIntervalFrom:toFinish:usingTimeScale:)]) {
+            [self.delegate waveformDidSelectIntervalFrom:self.selectionStartSamples toFinish:self.selectionEndSamples usingTimeScale:self.assetDuration.timescale];
+        }
+        [self setNeedsDisplay];
+        [self setNeedsLayout];
     }
 }
 
