@@ -37,8 +37,6 @@
 @property (nonatomic, strong) UIImageView *image;
 @property (nonatomic, strong) UIImageView *highlightedImage;
 @property (nonatomic, strong) UIView *clipping;
-@property (nonatomic, strong) AVAsset *asset;
-@property (nonatomic, strong) AVAssetTrack *assetTrack;
 @property (nonatomic, assign) unsigned long int totalSamples;
 @property (nonatomic, assign) unsigned long int cachedStartSamples;
 @property (nonatomic, assign) unsigned long int cachedEndSamples;
@@ -51,7 +49,7 @@
 
 @property (nonatomic, assign) unsigned long int selectionStartSamples;
 @property (nonatomic, assign) unsigned long int selectionEndSamples;
-@property (nonatomic, assign) unsigned long int samplesForSixSeconds;
+@property (nonatomic, assign) unsigned long int samplesForMaxInterval;
 
 @property BOOL renderingInProgress;
 @property BOOL loadingInProgress;
@@ -111,7 +109,8 @@
     self.loadingInProgress = YES;
     if ([self.delegate respondsToSelector:@selector(waveformViewWillLoad:)])
         [self.delegate waveformViewWillLoad:self];
-    self.asset = [AVURLAsset URLAssetWithURL:audioURL options:nil];
+    self.asset = [AVURLAsset URLAssetWithURL:audioURL options:@{AVURLAssetPreferPreciseDurationAndTimingKey : @(YES)}];
+//    self.asset = [AVURLAsset URLAssetWithURL:audioURL options:nil];
     self.assetTrack = [[self.asset tracksWithMediaType:AVMediaTypeAudio] firstObject];
     
     [self.asset loadValuesAsynchronouslyForKeys:@[@"duration"] completionHandler:^() {
@@ -135,8 +134,9 @@
                 self.assetDuration = self.asset.duration;
                 
                 self.selectionStartSamples = 0;
-                self.selectionEndSamples = 6 * self.assetDuration.timescale; // First 6 seconds;
-                self.samplesForSixSeconds = self.selectionEndSamples;
+                NSParameterAssert(self.maxInterval);
+                self.selectionEndSamples = self.maxInterval * self.assetDuration.timescale;
+                self.samplesForMaxInterval = self.selectionEndSamples;
                 
                 [self setNeedsDisplay];
                 [self performSelectorOnMainThread:@selector(setNeedsLayout) withObject:nil waitUntilDone:NO];
@@ -487,13 +487,13 @@
         NSInteger distanceToEnd = (NSInteger)labs(touchSample - (NSInteger)self.selectionEndSamples);
         if (distanceToEnd > distanceToStart) {
             //Move left handle if lenght < 6 secs
-            if (self.selectionEndSamples - touchSample > self.samplesForSixSeconds) {
+            if (self.selectionEndSamples - touchSample > self.samplesForMaxInterval) {
                 return;
             }
             self.selectionStartSamples = touchSample;
         } else {
             //Move right handle if lenght < 6 secs
-            if (touchSample - self.selectionStartSamples > self.samplesForSixSeconds) {
+            if (touchSample - self.selectionStartSamples > self.samplesForMaxInterval) {
                 return;
             }
             self.selectionEndSamples = touchSample;

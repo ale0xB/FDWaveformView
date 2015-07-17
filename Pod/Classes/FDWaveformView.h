@@ -29,6 +29,11 @@
 @property (nonatomic, readonly) unsigned long int selectionEndSamples;
 
 @property (nonatomic, assign) CMTime assetDuration;
+
+@property (nonatomic, assign) NSTimeInterval maxInterval;
+
+@property (nonatomic, strong) AVAsset *asset;
+@property (nonatomic, strong) AVAssetTrack *assetTrack;
 @end
 
 @protocol FDWaveformViewDelegate <NSObject>
