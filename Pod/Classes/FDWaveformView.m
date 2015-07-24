@@ -59,6 +59,7 @@
 
 - (void)initialize
 {
+    self.backgroundColor = [UIColor clearColor];
     self.image = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, self.frame.size.width, self.frame.size.height)];
     self.highlightedImage = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, self.frame.size.width, self.frame.size.height)];
     self.image.contentMode = UIViewContentModeScaleToFill;
@@ -71,11 +72,12 @@
     self.clipsToBounds = YES;
     
     self.selectionView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, CGRectGetWidth(self.frame), CGRectGetHeight(self.frame))];
-    [self.selectionView setBackgroundColor:[UIColor colorWithRed:1.0f green:0.0 blue:0.0 alpha:0.5]];
+    [self.selectionView setBackgroundColor:[UIColor colorWithRed:248.0/255.0 green:144.0/255.0 blue:87.0/255.0 alpha:0.5]];
     [self addSubview:self.selectionView];
     
-    self.wavesColor = [UIColor blackColor];
-    self.progressColor = [UIColor blueColor];
+//    self.wavesColor = [UIColor colorWithRed:236/255 green:236/255 blue:236/255 alpha:1.0];
+    self.wavesColor = [UIColor whiteColor];
+    self.progressColor = [UIColor grayColor];
     
     self.pinchRecognizer = [[UIPinchGestureRecognizer alloc] initWithTarget:self action:@selector(handlePinchGesture:)];
     self.pinchRecognizer.delegate = self;
