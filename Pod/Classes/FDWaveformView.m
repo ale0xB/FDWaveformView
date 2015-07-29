@@ -159,7 +159,7 @@
 - (void)setProgressSamples:(unsigned long)progressSamples
 {
     _progressSamples = progressSamples;
-    NSLog(@"Progress samples: %lu", progressSamples);
+//    NSLog(@"Progress samples: %lu", progressSamples);
     if (self.totalSamples) {
         float progress = (float)self.progressSamples / self.totalSamples;
         self.clipping.frame = CGRectMake(0,0,self.frame.size.width*progress,self.frame.size.height);
